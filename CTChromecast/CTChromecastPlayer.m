@@ -166,8 +166,10 @@ NSString *CTChromecastPlayerPlaybackDidFinishNotification        = @"CTChromecas
 }
 
 - (void)stop {
+    if (self.playbackState != MPMoviePlaybackStateStopped) {
+        [[NSNotificationCenter defaultCenter] postNotificationName:CTChromecastPlayerPlaybackDidFinishNotification object:self];
+    }
     [self unloadMedia];
-    [[NSNotificationCenter defaultCenter] postNotificationName:CTChromecastPlayerPlaybackDidFinishNotification object:self];
 }
 
 - (void)endSeeking {
