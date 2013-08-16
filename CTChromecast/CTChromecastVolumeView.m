@@ -193,12 +193,15 @@ void ctMediaVolumeSliderAudioVolumeChangeListenerCallback(void *inClientData, Au
 }
 
 - (void)layoutSubviews {
-    UIEdgeInsets buttonPading = UIEdgeInsetsMake(0, 5, 0, 5);
+    UIEdgeInsets buttonPading = UIEdgeInsetsMake(0, 5, 0, 0);
+    
     [self.chromecastButton sizeToFit];
     CGRect chromecastFrame = self.chromecastButton.frame;
     
     CGRect volumeFrame = self.bounds;
-    volumeFrame.size.width -= (chromecastFrame.size.width + buttonPading.left + buttonPading.right);
+    if (self.chromecastButton.alpha == 1.0f) {
+        volumeFrame.size.width -= (chromecastFrame.size.width + buttonPading.left + buttonPading.right);
+    } 
     
     chromecastFrame.origin.x = volumeFrame.size.width + buttonPading.left;
     chromecastFrame.origin.y = volumeFrame.origin.y - roundf((chromecastFrame.size.height - volumeFrame.size.height) / 2.0);
