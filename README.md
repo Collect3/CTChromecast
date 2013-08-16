@@ -27,6 +27,7 @@ Build and run the `Example` project in Xcode to see a demo movie player.
 
 ## Limitations
 * Currently does not support playing local files
+* Does not support the fullscreen transition on iPad. 
 
 ## Contact
 
