@@ -148,7 +148,7 @@ NSString *CTChromecastMoviePlayerPlaybackStateDidChangeNotification = @"CTChrome
 @interface CTChromecastMoviePlayerController()
 @property (nonatomic, strong) MPMoviePlayerController *moviePlayer;
 @property (nonatomic, strong) CTChromecastPlayer *chromecastPlayer;
-@property (nonatomic, strong) id <MPMediaPlayback>activePlayer;
+@property (nonatomic, strong) NSObject <MPMediaPlayback> *activePlayer;
 @property (nonatomic, strong) NSTimer *playbackTimer;
 @property (nonatomic, assign) CFTimeInterval lastKnownTime;
 @property (nonatomic, strong) CTChromecastMoviePlayerInternalView *internalView;
@@ -157,6 +157,10 @@ NSString *CTChromecastMoviePlayerPlaybackStateDidChangeNotification = @"CTChrome
 @implementation CTChromecastMoviePlayerController
 - (id)initWithContentURL:(NSURL *)url {
     if (self = [self init]) {
+        
+        self.movieSourceType = MPMovieSourceTypeFile;
+        self.allowsAirPlay = YES;
+        self.allowsChromecast = YES;
         
         // Setup default classes for control styles
         self.controlClassStyleDefault    = @"CTChromecastMovieControlsView";
@@ -328,11 +332,26 @@ NSString *CTChromecastMoviePlayerPlaybackStateDidChangeNotification = @"CTChrome
     }
 }
 
+- (BOOL)isChromecastVideoActive {
+    return ([self.activePlayer isKindOfClass: [CTChromecastPlayer class]]);
+}
+
+- (BOOL)isAirPlayVideoActive {
+    return self.moviePlayer.airPlayVideoActive;
+}
+
+- (void)setAllowsAirPlay:(BOOL)allowsAirPlay {
+    _allowsAirPlay = allowsAirPlay;
+    if (self.moviePlayer) {
+        self.moviePlayer.allowsAirPlay = _allowsAirPlay;
+    }
+}
+
 #pragma mark -
 #pragma mark State Management
 #pragma mark -
 - (void)updateState {
-    self.isSwitchingOutput = YES;    
+    self.isSwitchingOutput = YES;
     CTChromecastManager *manager = [CTChromecastManager sharedInstance];
     
     // Switch to chromecast player
@@ -346,48 +365,52 @@ NSString *CTChromecastMoviePlayerPlaybackStateDidChangeNotification = @"CTChrome
         
         self.activePlayer = self.chromecastPlayer;
         
-        if (self.moviePlayer.playbackState == MPMoviePlaybackStatePlaying) {
-            self.chromecastPlayer.initialPlaybackTime = self.moviePlayer.currentPlaybackTime;
-            [self.chromecastPlayer play];
-        } else {
+        if (self.moviePlayer == nil) {
             self.chromecastPlayer.initialPlaybackTime = self.initialPlaybackTime;
+        } else {
+            self.chromecastPlayer.initialPlaybackTime = self.moviePlayer.currentPlaybackTime;
         }
+        
+        [self.chromecastPlayer play];
         [self.moviePlayer stop];
         
         [self.moviePlayer.view removeFromSuperview];
         self.moviePlayer  = nil;
         
         self.internalView.playerView = self.chromecastPlayer.view;
-
-    // Switch to movie player
+        
+        // Switch to movie player
     } else {
         if (self.moviePlayer == nil) {
             self.moviePlayer = [[MPMoviePlayerController alloc] initWithContentURL: self.contentURL];
             self.moviePlayer.controlStyle = MPMovieControlStyleNone;
             self.moviePlayer.movieSourceType = self.movieSourceType;
+            self.moviePlayer.allowsAirPlay = self.allowsAirPlay;
         } else {
             self.moviePlayer.contentURL = self.contentURL;
         }
         
         self.activePlayer = self.moviePlayer;
-                        
-        if (self.chromecastPlayer.playbackState == MPMoviePlaybackStatePlaying) {         
-            self.moviePlayer.initialPlaybackTime = self.chromecastPlayer.currentPlaybackTime;
-            [self.moviePlayer play];
-        } else {
+        
+        if (self.chromecastPlayer == nil) {
             self.moviePlayer.initialPlaybackTime = self.initialPlaybackTime;
+        } else {
+            self.moviePlayer.initialPlaybackTime = self.chromecastPlayer.currentPlaybackTime;
         }
-        [self.chromecastPlayer stop];          
+        
+        [self.moviePlayer play];
+        [self.chromecastPlayer stop];
         
         [self.chromecastPlayer.view removeFromSuperview];
         self.chromecastPlayer = nil;
         
         self.internalView.playerView = self.moviePlayer.view;
     }
-    [self.controlsView moviePlayer:self updatedMovieScalingMode:self.scalingMode];    
+    [self.controlsView moviePlayer:self updatedMovieScalingMode:self.scalingMode];
     [self.view setNeedsLayout];
     self.isSwitchingOutput = NO;
 }
+
 
 - (void)playbackTimerTick {
     if (self.lastKnownTime != self.currentPlaybackTime) {

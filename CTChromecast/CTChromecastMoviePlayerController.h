@@ -51,6 +51,10 @@ extern NSString *CTChromecastMoviePlayerPlaybackStateDidChangeNotification;
 @property (nonatomic) NSTimeInterval initialPlaybackTime;
 @property (nonatomic, assign) MPMovieScalingMode scalingMode;
 @property (nonatomic, assign) BOOL fullscreen;
+@property (nonatomic, readonly, getter=isAirPlayVideoActive) BOOL airPlayVideoActive;
+@property (nonatomic, readonly, getter=isChromecastVideoActive) BOOL chromecastVideoActive;
+@property (nonatomic) BOOL allowsAirPlay;
+@property (nonatomic) BOOL allowsChromecast;
 
 /*  Properties for customising the class used for the indivdual control styles
     Classes should conform to the CTChromecastMovieControlsViewProtocol
