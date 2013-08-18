@@ -196,11 +196,16 @@
 @implementation CTChromecastMovieNavigationBar
 - (id)initWithFrame:(CGRect)f {
     if (self = [super initWithFrame: f]) {
-        self.tintColor = [UIColor blackColor];
-        self.translucent = YES;
-        [self setBackgroundImage:[UIImage imageNamed:@"movie-controls-transport-bg"] forBarMetrics:UIBarMetricsDefault];
-        [self setBackgroundImage:[UIImage imageNamed:@"movie-controls-transport-bg"] forBarMetrics:UIBarMetricsLandscapePhone];
         
+
+        // If iOS6 and below use an image as the background, otherwise use the default iOS7 background.
+        if (![self respondsToSelector: @selector(tintColorDidChange)]) {
+            self.tintColor = [UIColor blackColor];
+            self.translucent = YES;
+            [self setBackgroundImage:[UIImage imageNamed:@"movie-controls-transport-bg"] forBarMetrics:UIBarMetricsDefault];
+            [self setBackgroundImage:[UIImage imageNamed:@"movie-controls-transport-bg"] forBarMetrics:UIBarMetricsLandscapePhone];
+        }
+
         self.seeker = [[CTChromecastMovieSeeker alloc] initWithFrame: CGRectMake(0, 0, 1024, 40)];
         self.seeker.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 
@@ -267,9 +272,19 @@
 - (id)initWithFrame:(CGRect)f {
     if (self = [super initWithFrame: f]) {
         
-        self.backgroundImageView = [[UIImageView alloc] initWithImage: [UIImage imageNamed:@"movie-controls-transport-bg"]];
-        [self addSubview: self.backgroundImageView];
-        
+
+        if ([self respondsToSelector: @selector(tintColorDidChange)]) {
+            // If iOS7 use a toolbar as our backround to get some transparency
+            UIToolbar *toolbar = [[UIToolbar alloc] initWithFrame: f];
+            self.backgroundColor = [UIColor clearColor];
+            self.backgroundImageView = (id)toolbar;
+            [self addSubview: toolbar];
+        } else {
+            // iOS6 and below just use the image.
+            self.backgroundImageView = [[UIImageView alloc] initWithImage: [UIImage imageNamed:@"movie-controls-transport-bg"]];
+            [self addSubview: self.backgroundImageView];
+        }
+
         self.seekBackButton    = [[CTChromecastTransportButton alloc] initWithImageName: @"movie-controls-button-rewind"];
         [self addSubview: self.seekBackButton];
         
@@ -286,6 +301,13 @@
         [self addSubview: self.volumeSlider];
     }
     return self;
+}
+
+- (void)setAlpha:(CGFloat)alpha {
+    // For iOS7 toolbar to fade correctly
+    for (UIView *v in self.subviews) {
+        v.alpha = alpha;
+    }
 }
 
 - (void)setPlaying:(BOOL)playing {
@@ -389,6 +411,11 @@
         [self.navigationBar.doneButton setAction:@selector(actionDone)];
     }
     return self;
+}
+
+- (void)setAlpha:(CGFloat)alpha {
+    self.transportView.alpha = alpha;
+    self.navigationBar.alpha = alpha;
 }
 
 - (void)updateBuffering:(CTChromecastMoviePlayerController*)player {

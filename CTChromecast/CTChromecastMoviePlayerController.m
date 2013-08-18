@@ -170,6 +170,11 @@ NSString *CTChromecastMoviePlayerPlaybackStateDidChangeNotification = @"CTChrome
         
         _contentURL = url;
 
+        // Create the current player as soon as possible
+        // This way it ensures the same flow as wehn using
+        // MPMoviePlayerController directly for methods such as
+        // prepareToPlay
+        self.activePlayer = [self setupPlayer];
                 
         // Chromecast load state messages
         [[NSNotificationCenter  defaultCenter] addObserver:self
@@ -231,14 +236,22 @@ NSString *CTChromecastMoviePlayerPlaybackStateDidChangeNotification = @"CTChrome
                                                       name:CTChromecastDeviceListHide
                                                     object:nil];
         
-        // Timer that tracks playback time
-        self.playbackTimer = [NSTimer scheduledTimerWithTimeInterval:0.1
+    }
+    return self;
+}
+
+- (void)startPlaybackTimer {
+    // Timer that tracks playback time
+    self.playbackTimer = [NSTimer scheduledTimerWithTimeInterval:0.1
                                                           target:self
                                                         selector:@selector(playbackTimerTick)
                                                         userInfo:nil
                                                          repeats:YES];
-    }
-    return self;
+}
+
+- (void)stopPlaybackTimer {
+    [self.playbackTimer invalidate];
+    self.playbackTimer = nil;
 }
 
 - (void)dealloc {
@@ -262,6 +275,7 @@ NSString *CTChromecastMoviePlayerPlaybackStateDidChangeNotification = @"CTChrome
 - (void)loadView {
     self.internalView =  [[CTChromecastMoviePlayerInternalView alloc] init];
     self.internalView.controller = self;
+    self.internalView.playerView = (self.activePlayer == self.moviePlayer) ? self.moviePlayer.view : self.chromecastPlayer.view;
     self.view = self.internalView;
 }
 
@@ -277,7 +291,6 @@ NSString *CTChromecastMoviePlayerPlaybackStateDidChangeNotification = @"CTChrome
 
 - (void)viewDidLoad {
     [self loadControlsView];
-    [self updateState];    
 }
 
 - (void)viewWillLayoutSubviews {
@@ -292,6 +305,15 @@ NSString *CTChromecastMoviePlayerPlaybackStateDidChangeNotification = @"CTChrome
     // If we have created our view then recreate the controls view
     if (self.internalView) {
         [self loadControlsView];
+    }
+}
+
+- (void)setInitialPlaybackTime:(NSTimeInterval)initialPlaybackTime {
+    _initialPlaybackTime = initialPlaybackTime;
+    if (self.moviePlayer) {
+        self.moviePlayer.initialPlaybackTime = _initialPlaybackTime;
+    } else {
+        self.chromecastPlayer.initialPlaybackTime = _initialPlaybackTime;
     }
 }
 
@@ -320,7 +342,7 @@ NSString *CTChromecastMoviePlayerPlaybackStateDidChangeNotification = @"CTChrome
 
 /** Not currently implemented */
 - (void)setFullscreen:(BOOL)fullscreen animated:(BOOL)animated {
-    NSLog(@"WARNING: setFullscreen:animated: not supported");
+    NSLog(@"CTChromecastMoviePlayerController: WARNING: setFullscreen:animated: not supported");
 }
 
 - (void)setContentURL:(NSURL *)contentURL {
@@ -347,67 +369,72 @@ NSString *CTChromecastMoviePlayerPlaybackStateDidChangeNotification = @"CTChrome
     }
 }
 
+- (void)setMovieSourceType:(MPMovieSourceType)movieSourceType {
+    _movieSourceType = movieSourceType;
+    if (self.moviePlayer) {
+        self.moviePlayer.movieSourceType = movieSourceType;
+    }
+}
+
 #pragma mark -
 #pragma mark State Management
 #pragma mark -
-- (void)updateState {
-    self.isSwitchingOutput = YES;
+- (id)setupPlayer {
     CTChromecastManager *manager = [CTChromecastManager sharedInstance];
-    
-    // Switch to chromecast player
     if (manager.activeDevice) {
-        
         if (self.chromecastPlayer == nil) {
             self.chromecastPlayer = [[CTChromecastPlayer alloc] initWithContentURL: self.contentURL];
-        } else {
-            self.chromecastPlayer.contentURL = self.contentURL;
-        }
-        
-        self.activePlayer = self.chromecastPlayer;
-        
-        if (self.moviePlayer == nil) {
-            self.chromecastPlayer.initialPlaybackTime = self.initialPlaybackTime;
-        } else {
             self.chromecastPlayer.initialPlaybackTime = self.moviePlayer.currentPlaybackTime;
         }
-        
-        [self.chromecastPlayer play];
-        [self.moviePlayer stop];
-        
-        [self.moviePlayer.view removeFromSuperview];
-        self.moviePlayer  = nil;
-        
-        self.internalView.playerView = self.chromecastPlayer.view;
-        
-        // Switch to movie player
+        return self.chromecastPlayer;
     } else {
         if (self.moviePlayer == nil) {
-            self.moviePlayer = [[MPMoviePlayerController alloc] initWithContentURL: self.contentURL];
-            self.moviePlayer.controlStyle = MPMovieControlStyleNone;
+            self.moviePlayer = [[MPMoviePlayerController alloc] init];
+            
+            // MPMoviePlayerController can crash if setting the content URL before
+            // the movie source type, particuarlly with the streaming type.
             self.moviePlayer.movieSourceType = self.movieSourceType;
+            [self.moviePlayer setContentURL: self.contentURL];
+            self.moviePlayer.controlStyle = MPMovieControlStyleNone;
             self.moviePlayer.allowsAirPlay = self.allowsAirPlay;
-        } else {
-            self.moviePlayer.contentURL = self.contentURL;
-        }
-        
-        self.activePlayer = self.moviePlayer;
-        
-        if (self.chromecastPlayer == nil) {
-            self.moviePlayer.initialPlaybackTime = self.initialPlaybackTime;
-        } else {
             self.moviePlayer.initialPlaybackTime = self.chromecastPlayer.currentPlaybackTime;
         }
-        
-        [self.moviePlayer play];
-        [self.chromecastPlayer stop];
-        
-        [self.chromecastPlayer.view removeFromSuperview];
-        self.chromecastPlayer = nil;
-        
-        self.internalView.playerView = self.moviePlayer.view;
+        return self.moviePlayer;
     }
+}
+
+- (void)switchOutput {
+    // Flag to ignore movie player events when unloading / reloading
+    self.isSwitchingOutput = YES;
+    
+    // Get new output player
+    id previousPlayer = self.activePlayer;
+    id newPlayer      = [self setupPlayer];
+    
+    // Nothing to do if we havent switched from the urrent
+    if ([newPlayer isEqual: self.activePlayer]) {
+        return;
+    }
+    
+    // Setup the new player
+    self.activePlayer = newPlayer;
+    [newPlayer setInitialPlaybackTime: [previousPlayer currentPlaybackTime]];
+    [newPlayer play];
+    self.internalView.playerView = [newPlayer view];
     [self.controlsView moviePlayer:self updatedMovieScalingMode:self.scalingMode];
-    [self.view setNeedsLayout];
+    //[self.view setNeedsLayout];
+    
+    // Tear down the old
+    [previousPlayer stop];
+
+    // Cleanup
+    if ([previousPlayer isEqual: self.moviePlayer]) {
+        self.moviePlayer = nil;
+    } else if ([previousPlayer isEqual: self.chromecastPlayer]) {
+        self.chromecastPlayer = nil;
+    }
+    previousPlayer = nil;
+    
     self.isSwitchingOutput = NO;
 }
 
@@ -425,11 +452,11 @@ NSString *CTChromecastMoviePlayerPlaybackStateDidChangeNotification = @"CTChrome
 #pragma mark Manager Notifications
 #pragma mark -
 - (void)deviceConnected {
-    [self updateState];
+    [self switchOutput];
 }
 
 - (void)deviceDisconnected {
-    [self updateState];
+    [self switchOutput];
 }
 
 
@@ -441,10 +468,18 @@ NSString *CTChromecastMoviePlayerPlaybackStateDidChangeNotification = @"CTChrome
         return;
     }
     
+    if (self.playbackState == MPMoviePlaybackStatePlaying) {
+        [self startPlaybackTimer];
+    } else {
+        [self stopPlaybackTimer];
+    }
+    
     [self.controlsView moviePlayer:self playStateUpdated: self.playbackState];
     
     if (!self.isSwitchingOutput) {
         [[NSNotificationCenter defaultCenter] postNotificationName:CTChromecastMoviePlayerPlaybackStateDidChangeNotification object:self];
+    } else {
+        NSLog(@"CTChromecastMoviePlayerController: Ignored %@", notification);
     }
     
 }
@@ -457,9 +492,13 @@ NSString *CTChromecastMoviePlayerPlaybackStateDidChangeNotification = @"CTChrome
 
     if (!self.isSwitchingOutput) {
         [[NSNotificationCenter defaultCenter] postNotificationName:CTChromecastMoviePlayerLoadStateDidChangeNotification object:self];
+    } else {
+        NSLog(@"CTChromecastMoviePlayerController: Ignored %@", notification);
     }
+
     
 }
+
 - (void)movieDurationAvailableNotification:(NSNotification*)notification {
     if (![notification.object isEqual: self.activePlayer]) {
         return;
@@ -475,6 +514,8 @@ NSString *CTChromecastMoviePlayerPlaybackStateDidChangeNotification = @"CTChrome
     
     if (!self.isSwitchingOutput) {
         [[NSNotificationCenter defaultCenter] postNotificationName:CTChromecastMoviePlayerPlaybackDidFinishNotification object:self];
+    } else {
+        NSLog(@"CTChromecastMoviePlayerController: Ignored %@", notification);
     }
 }
 #pragma mark -
