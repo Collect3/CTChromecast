@@ -334,7 +334,7 @@ NSString *CTChromecastPlayerPlaybackDidFinishNotification        = @"CTChromecas
 // Begins playback upon successfully loading a piece of media.
 - (void) mediaProtocolCommandDidComplete:(GCKMediaProtocolCommand *)command {
     self.playbackState = MPMoviePlaybackStatePlaying;
-    self.loadState     = MPMovieLoadStatePlaythroughOK;
+    self.loadState     = MPMovieLoadStatePlaythroughOK & MPMovieLoadStatePlayable;
     
     NSLog(@"mediaProtocolCommandDidComplete");
     //[self.volumeSlider setValue:[self.mMPMS volume] animated:YES];
